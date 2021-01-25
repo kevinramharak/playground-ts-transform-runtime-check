@@ -24,8 +24,8 @@ export default rootFiles.map(name => {
     plugins: [
       typescript({ tsconfig: 'tsconfig.json' }),
       externalGlobals({ typescript: "window.ts" }),
-      node(),
       commonjs(),
+      node(),
       json()
     ],
   }
