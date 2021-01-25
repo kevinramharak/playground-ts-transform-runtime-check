@@ -1,45 +1,56 @@
+/// <reference path="./index.d.ts" />
+
 import type { PlaygroundPlugin, PluginUtils } from "./vendor/playground"
 
+import runtimeCheck from 'ts-transform-runtime-check';
+
 const makePlugin = (utils: PluginUtils) => {
-  const customPlugin: PlaygroundPlugin = {
-    id: "example",
-    displayName: "Dev Example",
-    didMount: (sandbox, container) => {
-      console.log("Showing new plugin")
+    const customPlugin: PlaygroundPlugin = {
+        id: "ts-transform-runtime-check",
+        displayName: "Runtime Check",
+        didMount: (sandbox, container) => {
+            const ds = utils.createDesignSystem(container);
 
-      // Create a design system object to handle
-      // making DOM elements which fit the playground (and handle mobile/light/dark etc)
-      const ds = utils.createDesignSystem(container)
+            ds.title("Runtime Check");
 
-      ds.title("Example Plugin")
-      ds.p("This plugin has a button which changes the text in the editor, click below to test it")
+            const startButton = document.createElement("input");
+            startButton.type = "button";
+            startButton.value = "Run the transformer";
+            container.appendChild(startButton);
 
-      const startButton = document.createElement("input")
-      startButton.type = "button"
-      startButton.value = "Change the code in the editor"
-      container.appendChild(startButton)
+            const ts = sandbox.ts;
 
-      startButton.onclick = () => {
-        sandbox.setText("// You clicked the button!")
-      }
-    },
+            startButton.onclick = async () => {
+                const program = await sandbox.createTSProgram();
+                const sourceFile = program.getSourceFile(sandbox.filepath);
+                const options = sandbox.getCompilerOptions();
 
-    // This is called occasionally as text changes in monaco,
-    // it does not directly map 1 keyup to once run of the function
-    // because it is intentionally called at most once every 0.3 seconds
-    // and then will always run at the end.
-    modelChangedDebounce: async (_sandbox, _model) => {
-      // Do some work with the new text
-    },
+                const output: { text: string, filename: string }[] = [];
 
-    // Gives you a chance to remove anything set up,
-    // the container itself if wiped of children after this.
-    didUnmount: () => {
-      console.log("De-focusing plugin")
-    },
-  }
+                const result = program.emit(sourceFile, (filename, text) => {
+                    output.push({ filename, text });
+                }, void 0, false, { before: [runtimeCheck(program)] });
+                
+                console.log(output);
+            };
+        },
 
-  return customPlugin
+        // This is called occasionally as text changes in monaco,
+        // it does not directly map 1 keyup to once run of the function
+        // because it is intentionally called at most once every 0.3 seconds
+        // and then will always run at the end.
+        modelChangedDebounce: async (_sandbox, _model) => {
+            // Do some work with the new text
+        },
+
+        // Gives you a chance to remove anything set up,
+        // the container itself if wiped of children after this.
+        didUnmount: () => {
+
+        },
+    }
+
+    return customPlugin
 }
 
 export default makePlugin

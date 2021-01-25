@@ -6,17 +6,28 @@ import json from '@rollup/plugin-json'
 // You can have more root bundles by extending this array
 const rootFiles = ['index.ts']
 
+import externalGlobals from "rollup-plugin-external-globals";
+
 export default rootFiles.map(name => {
   /** @type { import("rollup").RollupOptions } */
   const options = {
     input: `src/${name}`,
     external: ['typescript'],
     output: {
+      paths: {
+        "typescript":"typescript-sandbox/index",
+      },
       name,
       dir: 'dist',
       format: 'amd',
     },
-    plugins: [typescript({ tsconfig: 'tsconfig.json' }), commonjs(), node(), json()],
+    plugins: [
+      typescript({ tsconfig: 'tsconfig.json' }),
+      externalGlobals({ typescript: "window.ts" }),
+      node(),
+      commonjs(),
+      json()
+    ],
   }
 
   return options
