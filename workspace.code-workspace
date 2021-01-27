@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "..\\ts-transform-runtime-check"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "..\\TypeScript"
+		}
+	],
+}

@@ -1,126 +1,167 @@
 /// <reference path="./index.d.ts" />
+
 import ts from 'typescript';
-import type { PlaygroundPlugin, PluginUtils } from "./vendor/playground"
+import type { editor } from 'monaco-editor';
+import type { PlaygroundPlugin, PluginUtils } from "./vendor/playground";
+import type { Sandbox } from './vendor/sandbox';
+
+import { createBrowserFSBackedSystem, createBrowserFSCompilerHost, createRootFileSystem, GlobalHost, installBfs, FileSystem } from './browserfs';
+import type { FSModule } from 'browserfs/dist/node/core/FS';
 
 import runtimeCheck from 'ts-transform-runtime-check';
 
-const makePlugin = (utils: PluginUtils) => {
-    const customPlugin: PlaygroundPlugin = {
-        id: "ts-transform-runtime-check",
-        displayName: "Runtime Check",
-        didMount: (sandbox, container) => {
+interface PluginData {
+    global: GlobalHost,
+    fs: FSModule,
+}
 
+interface PackageJson {
+    types?: string;
+    name: string;
+}
+
+const fetchUnpkgModulePackageInfo = (name: string) => {
+    return fetch(`https://www.unpkg.com/${name}/package.json`)
+        .then(response => response.json() as Promise<PackageJson>);
+};
+
+const fetchUnpkgModuleFile = (name: string, file: string) => {
+    return fetch(`https://www.unpkg.com/${name}/${file}`).then(response => response.text());
+}
+
+
+// TODO: make a custom BrowserFS build, current build sucks, includes to much and throws type errors
+
+const pluginFactory = (utils: PluginUtils): PlaygroundPlugin => {
+    // NOTE: BrowserFS types suck and its api is weirdly async, these wrapper functions make it manageble
+    const global = installBfs();
+    const root = createRootFileSystem({
+        fs: 'InMemory',
+    });
+    /** `fs` isn't actually initialised until `root` is resolved, but this does give us the sync api calls that the ts compiler requires */
+    const fs = global.require('fs');
+
+    const data: PluginData = {
+        global,
+        fs,
+    };
+
+    function mkdirpSync(p: string, mode: number): void {
+        if (!fs.existsSync(p)) {
+            mkdirpSync(global.require('path').dirname(p), mode);
+            fs.mkdirSync(p, mode);
+        }
+    }
+    
+
+    const runtimeCheckModuleName = 'ts-transform-runtime-check';
+    fetchUnpkgModulePackageInfo(runtimeCheckModuleName).then(meta => {
+        if (!meta.types) {
+            return Promise.reject();
+        }
+        return fetchUnpkgModuleFile(meta.name, meta.types).then(content => {
+            return {
+                path: `${meta.name}/${meta.types}`,
+                content,
+            }
+        });
+    }).then(file => {
+        mkdirpSync(global.require('path').dirname(`node_modules/${file.path}`), 0o777);
+        fs.writeFile(`node_modules/${file.path}`, file.content);
+    });
+
+    return {
+        id: 'playground-ts-transform-runtime-check',
+        displayName: 'Runtime Check AST transformer',
+        data,
+        shouldBeSelected() {
+            return false;
         },
-        // This is called occasionally as text changes in monaco,
-        // it does not directly map 1 keyup to once run of the function
-        // because it is intentionally called at most once every 0.3 seconds
-        // and then will always run at the end.
-        modelChangedDebounce: async (sandbox, model, container) => {
-                const containerDs = utils.createDesignSystem(container);
-                containerDs.clear();
-                const display = document.createElement("div")
-                container.appendChild(display)
-                const ds = utils.createDesignSystem(display);
-                ds.clear();
-                const options = sandbox.getCompilerOptions();
+        willMount(sandbox, container) {
+            /**
+             * A `ts.System` interface backed by `BrowserFS`
+             * // NOTE: that the `root` filesystem does the actual operations, if it does not support sync operations it will throw */
+            const system = createBrowserFSBackedSystem(global, fs);
 
-                const ts = sandbox.ts;
-                const { createSystem, createDefaultMapFromCDN, createVirtualCompilerHost } = sandbox.tsvfs
+            const ds = utils.createDesignSystem(container);
+            const button = ds.button({
+                label: 'Compile with the AST Transformer',
+            });
 
-                // for your time (e.g. you need to have es2015.lib.d.ts somewhere) - by grabbing the map from the TS CSN, tsvfs 
-                // will re-use all the cached d.ts files which the playground uses.
-                const fsMap = await createDefaultMapFromCDN({ target: options.target }, ts.version, true, ts)
+            button.style.marginBottom = '16px';
 
-                // We can add the file which represents the current file being edited (this could be: input.{ts,tsx,js,tsx})
-                // as with the file content as being the current editor's text
-                fsMap.set(sandbox.filepath, model.getValue())
+            const code = ds.code('');
 
-                fsMap.set('node_modules/ts-transform-runtime-check/package.json', `{
-                    "name": "ts-transform-runtime-check",
-                    "version": "0.0.1-alpha5",
-                    "main": "dist/index.js",
-                    "description": "Typescript AST transformer to generate type checks at runtime",
-                    "scripts": {
-                        "build": "tsc"
-                    },
-                    "engines": {
-                        "node": ">=12.10.0",
-                        "npm": ">=6.10.3"
-                    },
-                    "browserlist": [
-                        "last 1 chrome version",
-                        "last 1 firefox version"
-                    ],
-                    "author": "Kevin Ramharak <kevin@ramharak.nl>",
-                    "repository": {
-                        "type": "git",
-                        "url": "https://https://github.com/kevinramharak/ts-transform-runtime-check.git"
-                    },
-                    "types": "index.d.ts",
-                    "license": "ISC",
-                    "dependencies": {
-                        "@types/node": "^14.14.20",
-                        "ts-node": "^9.1.1",
-                        "typescript": "^4.1.3",
-                        "ttypescript": "1.5.12",
-                        "ts-expose-internals": "^4.1.3"
-                    }
-                }`);
-                fsMap.set('node_modules/ts-transform-runtime-check/index.d.ts', `
-// TODO: figure out the API
-// TODO: generate this
+            button.addEventListener('click', async () => {
+                /** get the `ts` from the sandbox */
+                const { ts } = sandbox;
+                const { createDefaultMapFromCDN } = sandbox.tsvfs;
 
-declare module 'ts-transform-runtime-check' {
-    /**
-     * check if \`value\` conforms to the runtime type of \`T\`
-     */
-    export function is<T>(value: unknown): value is T;
-}`);
+                /** get the compiler options */
+                const compilerOptions = sandbox.getCompilerOptions();
 
-                // fsMap is now a Map which has all of the lib.d.ts files needed for your current compiler settings
-                const system = createSystem(fsMap)
-                
-                // TypeScript has a system called 'hosts'
-                const host = createVirtualCompilerHost(system, options, sandbox.ts);
+                /**
+                 * A `ts.CompilerHost` interface backed by BrowserFS backed `ts.System`
+                 */
+                const host = createBrowserFSCompilerHost(global, system, compilerOptions, ts);
 
-                host.compilerHost.resolveModuleNames = (moduleNames, containingFile, reusedNames, redirectedReference, options) => {
-                    return moduleNames.map(name => {
-                        return {
-                            resolvedFileName: 'node_modules/ts-transform-runtime-check/index.d.ts',
-                            isExternalLibraryImport: true,
-                            extension: '.ts',
-                            packageId: {
-                                name: 'ts-transform-runtime-check',
-                                subModuleName: '',
-                                version: '0.0.0-alpha5',
-                            },
-                        } as ts.ResolvedModuleFull;
-                    });
-                };
+                /** 
+                 * get the typescript default library files and put them in our file system
+                 * NOTE: the internal function uses lzstring for caching/compression
+                 */
+                const libDTSFiles = await createDefaultMapFromCDN(compilerOptions, ts.version, true, ts);
+                system.createDirectory('libs');
+                [...libDTSFiles.entries()].forEach(([name, content]) => {
+                    system.writeFile(`libs/${name}`, content);
+                });
+
+                // add the sandbox code to the filesystem
+                system.writeFile(sandbox.filepath, sandbox.getText());
 
                 const program = ts.createProgram({
                     rootNames: [sandbox.filepath],
-                    options,
-                    host: host.compilerHost,
+                    options: compilerOptions,
+                    host,
                 });
 
-                const sourceFile = program.getSourceFile(sandbox.filepath)!;
+                const sourceFile = program.getSourceFile(sandbox.filepath);
 
-                const code = ds.code("");
-                program.emit(sourceFile, async (filename, content) => {
-                    if (filename === '/input.js') {
-                        const html = await sandbox.monaco.editor.colorize(content, 'typescript', {});
-                        code.innerHTML = html;
+                program.emit(sourceFile, (fileName, content) => {
+                    if (fileName.endsWith('.js')) {
+                        sandbox.monaco.editor.colorize(content, 'typescript', {}).then(highlighted => {
+                            code.innerHTML = highlighted;
+                        });
                     }
-                }, void 0, false, { before: [ runtimeCheck(program) ] });
+                }, void 0, false, { before: [runtimeCheck(program)] });
+            });
         },
+        didMount(sandbox, container) {
 
-        // Gives you a chance to remove anything set up,
-        // the container itself if wiped of children after this.
-        didUnmount: () => { },
-    }
+        },
+        willUnmount(sandbox, container) {
 
-    return customPlugin
-}
+        },
+        didUnmount(sandbox, container) {
 
-export default makePlugin
+        },
+        modelChanged(sandbox, model) {
+
+        },
+        modelChangedDebounce(sandbox, model) {
+            const contents = model.getValue();
+            fs.writeFile(sandbox.filepath, contents);
+
+            // something like this to fetch files and store the promises, then the compile button can await those promises before actually compiling
+            // TODO: might as well check local storage for package.json and .d.ts files
+            // based on: https://github.com/denoland/deno/issues/2994
+            function recursivelyPreProcessFile(content: string) {
+                const info = ts.preProcessFile(model.getValue(), true);
+                info.importedFiles.forEach(({ fileName }) => {
+
+                });
+            }
+        },
+    };
+};
+
+export default pluginFactory;
