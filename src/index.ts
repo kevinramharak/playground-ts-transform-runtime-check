@@ -1,5 +1,3 @@
-/// <reference path="./index.d.ts" />
-
 import ts from 'typescript';
 import type { editor } from 'monaco-editor';
 import type { PlaygroundPlugin, PluginUtils } from "./vendor/playground";
@@ -55,6 +53,7 @@ const pluginFactory = (utils: PluginUtils): PlaygroundPlugin => {
     
 
     const runtimeCheckModuleName = 'ts-transform-runtime-check';
+    let error: Error | undefined;
     fetchUnpkgModulePackageInfo(runtimeCheckModuleName).then(meta => {
         if (!meta.types) {
             return Promise.reject();
@@ -68,6 +67,8 @@ const pluginFactory = (utils: PluginUtils): PlaygroundPlugin => {
     }).then(file => {
         mkdirpSync(global.require('path').dirname(`node_modules/${file.path}`), 0o777);
         fs.writeFile(`node_modules/${file.path}`, file.content);
+    }).catch(e => {
+        error = e;
     });
 
     return {
@@ -84,6 +85,13 @@ const pluginFactory = (utils: PluginUtils): PlaygroundPlugin => {
             const system = createBrowserFSBackedSystem(global, fs);
 
             const ds = utils.createDesignSystem(container);
+
+            if (error) {
+                ds.title(`something went wrong while trying to fetch 'ts-transform-runtime-check' files needed to compile`);
+                ds.code(error.stack as any || error.message || '');
+                return;
+            }
+
             const button = ds.button({
                 label: 'Compile with the AST Transformer',
             });
@@ -109,7 +117,7 @@ const pluginFactory = (utils: PluginUtils): PlaygroundPlugin => {
                  * get the typescript default library files and put them in our file system
                  * NOTE: the internal function uses lzstring for caching/compression
                  */
-                const libDTSFiles = await createDefaultMapFromCDN(compilerOptions, ts.version, true, ts);
+                const libDTSFiles = await createDefaultMapFromCDN(compilerOptions, ts.version, false, ts);
                 system.createDirectory('libs');
                 [...libDTSFiles.entries()].forEach(([name, content]) => {
                     system.writeFile(`libs/${name}`, content);
