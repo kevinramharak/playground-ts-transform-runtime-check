@@ -1,6 +1,6 @@
 {
   "name": "playground-ts-transform-runtime-check",
-  "version": "0.0.3-alpha1",
+  "version": "0.0.3-alpha2",
   "main": "dist/index.js",
   "description": "A playground plugin for ts-transform-runtime-check",
   "license": "MIT",
