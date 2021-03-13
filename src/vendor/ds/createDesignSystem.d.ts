@@ -31,6 +31,8 @@ export declare const createDesignSystem: (sandbox: Sandbox) => (container: Eleme
      * The type is quite small, so it should be very feasible for you to massage other data to fit into this function
      */
     listDiags: (model: import("monaco-editor").editor.ITextModel, diags: DiagnosticRelatedInformation[]) => HTMLUListElement;
+    /** Lets you remove the hovers from listDiags etc */
+    clearDeltaDecorators: (force?: true | undefined) => void;
     /** Shows a single option in local storage (adds an li to the container BTW) */
     localStorageOption: (setting: LocalStorageOption) => HTMLLIElement;
     /** Uses localStorageOption to create a list of options */

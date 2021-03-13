@@ -2,6 +2,7 @@ import typescript from '@rollup/plugin-typescript'
 import node from '@rollup/plugin-node-resolve'
 import commonjs from '@rollup/plugin-commonjs'
 import json from '@rollup/plugin-json'
+import { string } from "rollup-plugin-string";
 
 // You can have more root bundles by extending this array
 const rootFiles = ['index.ts']
@@ -16,18 +17,15 @@ export default rootFiles.map(name => {
     output: {
       paths: {
         "typescript":"typescript-sandbox/index",
-        'fs': 'browserfs/dist/shims/fs.js',
-        'buffer': 'browserfs/dist/shims/buffer.js',
-        'path': 'browserfs/dist/shims/path.js',
-        'processGlobal': 'browserfs/dist/shims/process.js',
-        'bufferGlobal': 'browserfs/dist/shims/bufferGlobal.js',
-        'bfsGlobal': require.resolve('browserfs'),
       },
       name,
       dir: 'dist',
       format: 'amd',
     },
     plugins: [
+      string({
+        include: "**/*.d.ts"
+      }),
       typescript({ tsconfig: 'tsconfig.json' }),
       externalGlobals({ typescript: "window.ts" }),
       commonjs(),

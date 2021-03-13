@@ -19,6 +19,7 @@ export declare const createUtils: (sb: any, react: typeof React) => {
         p: (subtitle: string) => HTMLElement;
         showEmptyScreen: (message: string) => HTMLDivElement;
         listDiags: (model: import("monaco-editor").editor.ITextModel, diags: import("typescript").DiagnosticRelatedInformation[]) => HTMLUListElement;
+        clearDeltaDecorators: (force?: true | undefined) => void;
         localStorageOption: (setting: import("./ds/createDesignSystem").LocalStorageOption) => HTMLLIElement;
         showOptionList: (options: import("./ds/createDesignSystem").LocalStorageOption[], style: import("./ds/createDesignSystem").OptionsListConfig) => void;
         createTextInput: (config: {
